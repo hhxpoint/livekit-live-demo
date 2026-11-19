@@ -1,0 +1,31 @@
+﻿services:
+  livekit:
+    image: livekit/livekit-server:v1.6.0
+    container_name: livekit-server
+    restart: unless-stopped
+    ports:
+      - "7880:7880"   # HTTP/WebSocket信令端口
+      - "7881:7881/udp" # WebRTC核心媒体流端口
+      - "7882:7882"   # TURN/ICE内网穿透端口
+    environment:
+      - "LIVEKIT_KEYS=livekit-dev-key: livekit-dev-secret-32chars-strong"
+      - LIVEKIT_NODE_IP=127.0.0.1
+      - LIVEKIT_REDIS_ADDRESS=redis:6379
+      - LIVEKIT_LOG_LEVEL=info
+    depends_on:
+      - redis
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: livekit-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - livekit-redis-data:/data
+
+volumes:
+  livekit-redis-data:

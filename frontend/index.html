@@ -1,0 +1,565 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工业级直播系统</title>
+  <!-- 引入LiveKit SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client@1.15.0/dist/livekit-client.umd.min.js"></script>
+  <!-- 引入Tailwind CSS 快速构建工业级UI -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 引入Font Awesome 图标 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background-color: #0f1115;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    .video-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+      gap: 16px;
+      width: 100%;
+    }
+
+    .video-container {
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      background-color: #1e293b;
+      aspect-ratio: 16 / 9;
+    }
+
+    .video-container video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .user-badge {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      background-color: rgba(0, 0, 0, 0.75);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-badge {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .control-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+
+    .control-btn:hover {
+      transform: scale(1.05);
+    }
+
+    .control-btn.active {
+      background-color: #1e40af;
+      color: white;
+    }
+
+    .control-btn.danger {
+      background-color: #dc2626;
+      color: white;
+    }
+
+    .control-btn.secondary {
+      background-color: #334155;
+      color: white;
+    }
+
+    .scrollbar-hide::-webkit-scrollbar {
+      display: none;
+    }
+
+    .scrollbar-hide {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col">
+  <!-- 顶部导航栏 -->
+  <header class="w-full bg-slate-900 border-b border-slate-800 px-6 py-4">
+    <div class="max-w-[1920px] mx-auto w-full flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <i class="fa fa-video-camera text-blue-500 text-2xl"></i>
+        <h1 class="text-xl font-bold text-white">LiveKit 工业级直播系统</h1>
+      </div>
+      <div id="connection-status" class="hidden">
+        <span class="flex items-center gap-2 text-sm">
+          <span id="status-dot" class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+          <span id="status-text">已连接</span>
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主内容区 -->
+  <main class="flex-1 w-full max-w-[1920px] mx-auto px-6 py-6 flex flex-col">
+    <!-- 登录/进入房间区域 -->
+    <div id="room-join-section" class="flex-1 flex flex-col items-center justify-center">
+      <div class="w-full max-w-md bg-slate-800 rounded-2xl p-8 shadow-2xl border border-slate-700">
+        <h2 class="text-2xl font-bold text-center mb-6">进入直播间</h2>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-2">直播间号</label>
+            <input type="text" id="room-input" value="live-room-001"
+              class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-2">用户ID</label>
+            <input type="text" id="user-id-input" value="host-001"
+              class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-2">显示昵称</label>
+            <input type="text" id="user-name-input" value="主播"
+              class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <button id="join-btn" onclick="joinRoom()"
+            class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-all flex items-center justify-center gap-2">
+            <i class="fa fa-sign-in"></i>
+            进入直播间
+          </button>
+        </div>
+        <div id="error-tip" class="mt-4 text-red-500 text-sm text-center hidden"></div>
+      </div>
+    </div>
+
+    <!-- 直播房间区域 默认隐藏 -->
+    <div id="room-section" class="hidden flex-1 flex flex-col gap-6">
+      <!-- 房间信息 -->
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-4">
+          <h2 id="room-name" class="text-xl font-bold">直播间</h2>
+          <span id="user-count" class="px-3 py-1 bg-slate-800 rounded-full text-sm text-slate-300">在线人数：1</span>
+        </div>
+        <button id="leave-btn" onclick="leaveRoom()"
+          class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-2 transition-all">
+          <i class="fa fa-sign-out"></i>
+          退出直播间
+        </button>
+      </div>
+
+      <!-- 视频网格区域 -->
+      <div class="flex-1">
+        <div id="video-grid" class="video-grid"></div>
+      </div>
+
+      <!-- 底部控制栏 -->
+      <div class="w-full bg-slate-900 rounded-2xl p-4 border border-slate-800 flex items-center justify-between">
+        <!-- 左侧信息 -->
+        <div class="flex items-center gap-4">
+          <div class="flex items-center gap-2 text-sm text-slate-400">
+            <i class="fa fa-clock-o"></i>
+            <span id="room-time">00:00:00</span>
+          </div>
+        </div>
+
+        <!-- 中间控制按钮 -->
+        <div class="flex items-center gap-4">
+          <button id="camera-btn" onclick="toggleCamera()" class="control-btn secondary">
+            <i class="fa fa-video-camera text-lg"></i>
+          </button>
+          <button id="mic-btn" onclick="toggleMicrophone()" class="control-btn secondary">
+            <i class="fa fa-microphone text-lg"></i>
+          </button>
+          <button id="screen-btn" onclick="toggleScreenShare()" class="control-btn secondary">
+            <i class="fa fa-desktop text-lg"></i>
+          </button>
+          <button onclick="enterFullScreen()" class="control-btn secondary">
+            <i class="fa fa-expand text-lg"></i>
+          </button>
+        </div>
+
+        <!-- 右侧功能 -->
+        <div class="flex items-center gap-4">
+          <button id="participants-btn" class="control-btn secondary">
+            <i class="fa fa-users text-lg"></i>
+          </button>
+          <button id="settings-btn" class="control-btn secondary">
+            <i class="fa fa-cog text-lg"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // 全局配置
+    const LIVEKIT_URL = 'ws://localhost:7880';
+    const BACKEND_URL = 'http://localhost:6060';
+    let room = null;
+    let roomTimer = null;
+    let roomStartTime = null;
+
+    // DOM元素
+    const roomJoinSection = document.getElementById('room-join-section');
+    const roomSection = document.getElementById('room-section');
+    const videoGrid = document.getElementById('video-grid');
+    const errorTip = document.getElementById('error-tip');
+    const connectionStatus = document.getElementById('connection-status');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const roomNameEl = document.getElementById('room-name');
+    const userCountEl = document.getElementById('user-count');
+    const roomTimeEl = document.getElementById('room-time');
+    const cameraBtn = document.getElementById('camera-btn');
+    const micBtn = document.getElementById('mic-btn');
+    const screenBtn = document.getElementById('screen-btn');
+
+    // 显示错误提示
+    function showError(message) {
+      errorTip.textContent = message;
+      errorTip.classList.remove('hidden');
+      setTimeout(() => {
+        errorTip.classList.add('hidden');
+      }, 5000);
+    }
+
+    // 更新连接状态
+    function updateConnectionStatus(isConnected) {
+      connectionStatus.classList.remove('hidden');
+      if (isConnected) {
+        statusDot.classList.remove('bg-red-500');
+        statusDot.classList.add('bg-green-500', 'animate-pulse');
+        statusText.textContent = '已连接';
+        statusText.classList.remove('text-red-500');
+        statusText.classList.add('text-green-500');
+      } else {
+        statusDot.classList.remove('bg-green-500', 'animate-pulse');
+        statusDot.classList.add('bg-red-500');
+        statusText.textContent = '连接断开';
+        statusText.classList.remove('text-green-500');
+        statusText.classList.add('text-red-500');
+      }
+    }
+
+    // 更新房间时长
+    function updateRoomTime() {
+      if (!roomStartTime) return;
+      const elapsed = Math.floor((Date.now() - roomStartTime) / 1000);
+      const hours = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+      const minutes = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+      const seconds = String(elapsed % 60).padStart(2, '0');
+      roomTimeEl.textContent = `${hours}:${minutes}:${seconds}`;
+    }
+
+    // 添加视频画面到页面
+    function addVideoTrack(track, participant, isLocal = false, isScreen = false) {
+      const participantId = participant.identity;
+      const trackId = track.sid;
+      const containerId = `video-${participantId}-${trackId}`;
+
+      // 避免重复添加
+      if (document.getElementById(containerId)) return;
+
+      // 创建容器
+      const container = document.createElement('div');
+      container.className = 'video-container';
+      container.id = containerId;
+
+      // 创建视频元素
+      const videoEl = document.createElement('video');
+      videoEl.autoplay = true;
+      videoEl.playsInline = true;
+      videoEl.muted = isLocal; // 本地视频静音避免回声
+      track.attach(videoEl);
+
+      // 用户标签
+      const userBadge = document.createElement('div');
+      userBadge.className = 'user-badge';
+      userBadge.innerHTML = `
+        <i class="fa fa-user"></i>
+        <span>${participant.name || participant.identity} ${isLocal ? '(我)' : ''} ${isScreen ? '(屏幕共享)' : ''}</span>
+      `;
+
+      // 状态标签
+      const statusBadge = document.createElement('div');
+      statusBadge.className = 'status-badge bg-green-600';
+      statusBadge.textContent = isLocal ? '主播' : '观众';
+
+      // 组装
+      container.appendChild(videoEl);
+      container.appendChild(userBadge);
+      container.appendChild(statusBadge);
+      videoGrid.appendChild(container);
+    }
+
+    // 移除视频画面
+    function removeVideoTrack(participantId, trackId = null) {
+      if (trackId) {
+        const el = document.getElementById(`video-${participantId}-${trackId}`);
+        if (el) el.remove();
+      } else {
+        // 移除该用户所有画面
+        const elements = document.querySelectorAll(`[id^="video-${participantId}-"]`);
+        elements.forEach(el => el.remove());
+      }
+      updateUserCount();
+    }
+
+    // 更新在线人数
+    function updateUserCount() {
+      if (!room) return;
+      const count = room.participants.size + 1; // 自己+其他参与者
+      userCountEl.textContent = `在线人数：${count}`;
+    }
+
+    // 进入直播间
+    async function joinRoom() {
+      const roomName = document.getElementById('room-input').value.trim();
+      const userId = document.getElementById('user-id-input').value.trim();
+      const userName = document.getElementById('user-name-input').value.trim();
+
+      if (!roomName || !userId) {
+        showError('直播间号和用户ID不能为空');
+        return;
+      }
+
+      try {
+        // 1. 从后端获取Token
+        const res = await fetch(`${BACKEND_URL}/api/token?room=${roomName}&identity=${userId}&name=${userName}`);
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || '获取Token失败');
+        }
+
+        // 2. 初始化房间
+        room = new LivekitClient.Room({
+          adaptiveStream: true,
+          dynacast: true,
+          videoCaptureDefaults: {
+            resolution: { width: 1920, height: 1080, frameRate: 30 }
+          },
+          publishDefaults: {
+            videoEncoding: { maxBitrate: 5000000, maxFramerate: 30 },
+            screenShareEncoding: { maxBitrate: 10000000, maxFramerate: 60 }
+          }
+        });
+
+        // 3. 绑定房间事件
+        
+        // ✅ 正确写法
+        // 本地轨道发布成功
+        room.on('localTrackPublished', (publication, participant) => {
+          if (publication.track) {
+            const isScreen = publication.source === LivekitClient.Track.Source.ScreenShare;
+            addVideoTrack(publication.track, participant, true, isScreen);
+          }
+        });
+
+        // 本地轨道取消发布
+        room.on('localTrackUnpublished', (publication, participant) => {
+          removeVideoTrack(participant.identity, publication.trackSid);
+        });
+
+
+
+
+        // 远端用户加入
+        room.on('participantConnected', (participant) => {
+          updateUserCount();
+        });
+
+        // 远端用户离开
+        room.on('participantDisconnected', (participant) => {
+          removeVideoTrack(participant.identity);
+        });
+
+        // 订阅远端轨道
+        room.on('trackSubscribed', (track, publication, participant) => {
+          // const isScreen = publication.source === Livekit.Track.Source.ScreenShare;
+          const isScreen = publication.source === LivekitClient.Track.Source.ScreenShare;
+          addVideoTrack(track, participant, false, isScreen);
+        });
+
+        // 取消订阅远端轨道
+        room.on('trackUnsubscribed', (track, publication, participant) => {
+          removeVideoTrack(participant.identity, publication.trackSid);
+        });
+
+        // 房间连接状态变化
+        room.on('connectionStateChanged', (state) => {
+          updateConnectionStatus(state === 'connected');
+        });
+
+        // 房间断开连接
+        room.on('disconnected', () => {
+          updateConnectionStatus(false);
+        });
+
+        // 4. 连接房间
+        await room.connect(LIVEKIT_URL, data.token);
+        console.log('✅ 成功进入直播间', roomName);
+
+        // 5. 更新UI
+        roomNameEl.textContent = `直播间：${roomName}`;
+        roomJoinSection.classList.add('hidden');
+        roomSection.classList.remove('hidden');
+        updateConnectionStatus(true);
+        updateUserCount();
+
+        // 6. 启动房间时长计时器
+        roomStartTime = Date.now();
+        roomTimer = setInterval(updateRoomTime, 1000);
+
+      } catch (err) {
+        console.error('进入直播间失败', err);
+        showError(err.message || '进入直播间失败，请检查服务是否正常启动');
+      }
+    }
+
+    // 退出直播间
+    async function leaveRoom() {
+      if (room) {
+        await room.disconnect();
+        room = null;
+      }
+
+      // 清理计时器
+      if (roomTimer) {
+        clearInterval(roomTimer);
+        roomTimer = null;
+        roomStartTime = null;
+      }
+
+      // 清空视频网格
+      videoGrid.innerHTML = '';
+
+      // 还原UI
+      roomSection.classList.add('hidden');
+      roomJoinSection.classList.remove('hidden');
+      connectionStatus.classList.add('hidden');
+
+      // 还原按钮状态
+      cameraBtn.classList.remove('active', 'danger');
+      cameraBtn.classList.add('secondary');
+      micBtn.classList.remove('active', 'danger');
+      micBtn.classList.add('secondary');
+      screenBtn.classList.remove('active', 'danger');
+      screenBtn.classList.add('secondary');
+    }
+
+    // 切换摄像头
+    async function toggleCamera() {
+      if (!room) return;
+
+      const isEnabled = room.localParticipant.isCameraEnabled;
+      try {
+        if (!isEnabled) {
+          await room.localParticipant.setCameraEnabled(true);
+          cameraBtn.classList.remove('secondary');
+          cameraBtn.classList.add('active');
+        } else {
+          await room.localParticipant.setCameraEnabled(false);
+          cameraBtn.classList.remove('active');
+          cameraBtn.classList.add('secondary');
+        }
+      } catch (err) {
+        console.error('摄像头操作失败', err);
+        showError('摄像头操作失败，请检查权限');
+      }
+    }
+
+    // 切换麦克风
+    async function toggleMicrophone() {
+      if (!room) return;
+
+      const isEnabled = room.localParticipant.isMicrophoneEnabled;
+      try {
+        if (!isEnabled) {
+          await room.localParticipant.setMicrophoneEnabled(true);
+          micBtn.classList.remove('secondary');
+          micBtn.classList.add('active');
+        } else {
+          await room.localParticipant.setMicrophoneEnabled(false);
+          micBtn.classList.remove('active');
+          micBtn.classList.add('secondary');
+        }
+      } catch (err) {
+        console.error('麦克风操作失败', err);
+        showError('麦克风操作失败，请检查权限');
+      }
+    }
+
+    // 切换屏幕共享
+    async function toggleScreenShare() {
+      if (!room) return;
+
+      const isEnabled = room.localParticipant.isScreenShareEnabled;
+      try {
+        if (!isEnabled) {
+          await room.localParticipant.setScreenShareEnabled(true, {
+            audio: true,
+            videoEncoding: { maxBitrate: 10000000, maxFramerate: 60 }
+          });
+          screenBtn.classList.remove('secondary');
+          screenBtn.classList.add('active');
+        } else {
+          await room.localParticipant.setScreenShareEnabled(false);
+          screenBtn.classList.remove('active');
+          screenBtn.classList.add('secondary');
+        }
+      } catch (err) {
+        console.error('屏幕共享操作失败', err);
+        showError('屏幕共享操作失败，请检查权限');
+      }
+    }
+
+    // 进入全屏
+    function enterFullScreen() {
+      if (!document.fullscreenElement) {
+        videoGrid.requestFullscreen().catch(err => {
+          showError('全屏模式启动失败');
+          console.error(err);
+        });
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    // 页面关闭时清理
+    window.addEventListener('beforeunload', () => {
+      if (room) {
+        room.disconnect();
+      }
+    });
+  </script>
+</body>
+
+</html>
